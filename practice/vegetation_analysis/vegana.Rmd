@@ -1,0 +1,93 @@
+---
+title: "使用 R vegan 套件分析植群"
+author: "林政道 mutolisp@gmail.com"
+date: "October 13, 2014"
+output:
+  html_document:
+    toc: yes
+family: Times
+---
+## 資料前處理
+### 載入必要套件
+先載入 vegan 套件，使用 ```library(vegan)``` ，如果你尚未安裝 vegan package，請用 ```install.package(vegan)``` 安裝。
+```{r}
+library(vegan)
+```
+### 匯入資料
+使用 ```read.csv()``` 來匯入原始資料，你可以使用 excel 匯出 csv 檔案，或是使用 ```read.xls()``` (必須安裝 [gdata](http://cran.r-project.org/package=gdata) 套件) 來匯入原始資料，在下面的例子中，我們將 plot_header.csv 檔讀進 R，並令這個物件名稱為 ```raw_head```，species.csv 檔案亦是相同的處理方法
+
+```{r}
+# 載入原始資料，樣區物種資料為 species.csv，
+# 樣區 header 資料為 plot_header.csv
+raw_head = read.csv('plot_header.csv', header = T, row.names=1)
+raw_plot = read.csv('species.csv', header = T)
+```
+
+匯入資料後，看一下資料的樣貌，可以使用 ```head()``` 來看資料表的前幾行，用 ```dim()``` 來看資料的維度（列數、欄數）
+```{r}
+head(raw_head)
+dim(raw_head)
+head(raw_plot)
+dim(raw_plot)
+```
+上面的指令可以讓我們了解匯入資料的維度，欄位分別有哪些東西，這有助於初步的認識資料結構。接下來我們更進一步來看 header 中的環境因子。R 的資料結構分為 data frame, matrix, vector, list 等，預設是 data frame，你可以把它想像成是一個資料表的框架，裡頭每個格子裡都可以塞物品進去。在一個二維的 data frame 中，要細部拉出某個儲存的部件（例如第五列、第七欄，或是第三欄的第一列），都可以透過物件名稱加上中括號 ```object[m,n]```(m 代表列數，n 代表欄數，也可以用 x:y 代表範圍)來取用，例如：
+```{r}
+# 顯示第一列
+raw_head[1,]
+# 顯示第一欄，第 10 到第 20 列
+raw_head[10:20,1]
+# 也可以使用$欄位名稱來顯示資料
+raw_head$slope
+# 也可以加入判斷式，例如我們想要取出坡度大於 50 的樣區
+raw_head[raw_head$slope>50,]
+```
+
+接下來可以用一些統計圖來視覺化我們的資料，最簡單的例子就是盒鬚圖(boxplot)
+```{r}
+# 顯示坡度的盒鬚圖，中間的粗線是中位數，方框上方是第三四分位數、
+# 下方是第一四分位數; 最底下的線是最小值、最高的水平線是最大值。
+# 而最大小值外部的圓圈是 R 自動計算出的 outlier 
+boxplot(raw_head$slope)
+```
+
+從上面的盒鬚圖可以觀察出我們資料中，坡度 50% 都是集中在 20--40 度之間。
+之後希望能夠把多張盒鬚同時展示在同一張圖內，我們可以是用 ```par(mfrow=c(m,n))``` 來控制
+```{r}
+par(mfrow=c(2,2))
+boxplot(raw_head$slope)
+boxplot(raw_head$aspect)
+boxplot(raw_head$altitude)
+boxplot(raw_head$svf)
+```
+
+## 序列分析
+### 主成分分析(Principal Components Analysis; PCA)
+```{r}
+pca = princomp(raw_head)
+summary(pca)
+#biplot(pca, display ="site", pch = 1)
+```
+在進行更進一步的梯度分析之前，將物種資料重新組成物種-樣區的格式(用```reshape()```)
+```{r}
+# 重新把資料表排成物種（欄）-樣區（列）的格式
+veg_plot = reshape(raw_plot,timevar = "species", idvar="plotid",
+  v.names=NULL, direction = "wide")
+# 將欄位名稱存為 plotid
+row.names(veg_plot) = veg_plot$plotid
+# 移除 
+veg_plot = veg_plot[,2:dim(veg_plot)[2]]
+# 把 NA 值取代為 0
+veg_plot[is.na(veg_plot)] = 0
+```
+### 降趨對應分析(Detrended Correspondance Analysis; DCA)
+```{r}
+dca = decorana(veg_plot)
+```
+
+### 分類迴歸樹(Classification and Regression Tree; CART)
+```{r}
+veg_dist = vegdist(as.matrix(raw_head), method = "euclidean", diag=T)
+hc = hclust(veg_dist, method = "average")
+veg_group = cutree(hc, k = 9)
+#rect.hclust(hc,9)
+```
